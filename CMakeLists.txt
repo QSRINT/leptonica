@@ -126,22 +126,39 @@ if(NOT SW_BUILD)
   endif(LIBWEBP_SUPPORT)
   if(OPENJPEG_SUPPORT)
     find_package(OpenJPEG)
-    # we need absolute path in some cases on Windows
-    find_library(JP2K_LIBRARY NAMES openjp2)
-    if(OpenJPEG_FOUND AND JP2K_LIBRARY)
-      set(JP2K_FOUND TRUE)
-      set(JP2K_INCLUDE_DIRS ${OPENJPEG_INCLUDE_DIRS})
-      get_filename_component(JP2K_HEADER_DIR "${JP2K_INCLUDE_DIRS}" NAME)
-    else()
-      if(PKG_CONFIG_FOUND)
-        pkg_check_modules(JP2K libopenjp2>=2.0 QUIET)
-      endif(PKG_CONFIG_FOUND)
-    endif()
-    if(JP2K_FOUND)
-      set(JP2K_LIBRARIES ${JP2K_LIBRARY})
-      set(libs_private "${libs_private} -lopenjp2")
-      message(STATUS "FOUND OpenJPEG: ${JP2K_LIBRARIES}")
-    endif()
+    if(OpenJPEG_FOUND)
+        message(STATUS "FOUND OpenJPEG: ${OPENJPEG_LIBRARIES}")
+        set(JP2K 1)
+        set(JP2K_FOUND TRUE)
+        set(HAVE_LIBJP2K 1)
+
+        # We modify the include directory of OpenJPEG for the leptonica lib
+        # so that we need to do "#include <openjpeg-2.5/openjpeg.h>" rather than
+        # "#include <openjpeg.h>", because it allows the leptonica build to pass
+        # despite openjpeg.h being also present in GStreamer library, which we
+        # use in slayer project, which is an outdated version, and that would
+        # be picked first if our locally-built OpenJPEG include path would also
+        # be "<openjpeg.h>"
+        cmake_path(GET OPENJPEG_INCLUDE_DIRS PARENT_PATH JP2K_INCLUDE_DIRS)
+
+        # JP2K_HEADER_DIR is used to generate the LIBJP2K_HEADER C preprocessor
+        # constant, which defines path to OpenJPEG header that is included from
+        # Leptonica.
+        cmake_path(GET OPENJPEG_INCLUDE_DIRS FILENAME JP2K_HEADER_DIR)
+
+        # The variable OPENJPEG_LIBRARIES defined by OpenJPEG does not match our
+        # usecase: we need the direct path to the .a files and its value is likely
+        # something like -lopenjp2. We'll retrieve the absolute path from the
+        # target that were created by the OpenJPEG cmake files.
+        get_target_property(OPENJPEG_CONFIGS openjp2 IMPORTED_CONFIGURATIONS)
+        foreach(cfg IN LISTS OPENJPEG_CONFIGS)
+            get_target_property(cfg_location openjp2 IMPORTED_LOCATION_${cfg})
+            message("OpenJPEG ${cfg} location: ${cfg_location}")
+
+            list(APPEND JP2K_LIBRARIES ${cfg_location})
+            set(libs_private "${libs_private} ${cfg_location}")
+        endforeach()
+    endif(OpenJPEG_FOUND)
   endif(OPENJPEG_SUPPORT)
 else() # SW_BUILD=ON
   find_package(SW REQUIRED)
